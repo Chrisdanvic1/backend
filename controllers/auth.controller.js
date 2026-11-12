@@ -9,9 +9,11 @@ export const signUp = async (req, res, next) => {
   try {
     const { fullName, number, password } = req.body;
 
-    const existingUser = await User.findOne({ number });
+    const existingUser = await User.findOne({ number }).session(session);
 
     if (existingUser) {
+      await session.abortTransaction();
+
       return res.status(409).json({
         success: false,
         message: "Number already exists",
@@ -21,25 +23,35 @@ export const signUp = async (req, res, next) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const newUsers = await User.create([{ fullName, number, password: hashedPassword }], {
-      session,
-    });
+    const newUsers = await User.create(
+      [{ fullName, number, password: hashedPassword }],
+      {
+        session,
+      },
+    );
+
+    // eslint-disable-next-line no-unused-vars
+    const { password: _, ...safeUser } = newUsers[0].toObject();
 
     await session.commitTransaction();
-    session.endSession();
 
     res.status(200).json({
       success: true,
       message: "User created",
       data: {
-        user: newUsers,
+        user: safeUser,
       },
     });
   } catch (err) {
+    if (err.code === 11000) {
+      err.statusCode = 409;
+      return next(err);
+    }
     console.error(err);
     await session.abortTransaction();
-    session.endSession();
     next(err);
+  } finally {
+    await session.endSession();
   }
 };
 
@@ -47,7 +59,7 @@ export const signIn = async (req, res, next) => {
   try {
     const { number, password } = req.body;
 
-    const user = await User.findOne({ number });
+    const user = await User.findOne({ number }).select("+password");
 
     if (!user) {
       const error = new Error("Number not found");
@@ -55,27 +67,35 @@ export const signIn = async (req, res, next) => {
       throw error;
     }
 
-    const isPassword = await bcrypt.compare(password, user.password)
+    const isPassword = await bcrypt.compare(password, hashedPassword);
 
-     if (!isPassword) {
-       const error = new Error("Invalid password");
-       error.statusCode = 401;
-       throw error;
-     }
+    if (!isPassword) {
+      const error = new Error("Invalid password");
+      error.statusCode = 401;
+      throw error;
+    }
 
-    res.status(200).json({
-      success: true,
-      message: "User signed in successfully",
-      data: {
-        user,
-      },
+    const { password: hashedPassword, ...newUser } = user.toObject();
+
+    req.session.userId = user._id;
+
+    req.session.save((err) => {
+      if (err) {
+        return next(err);
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "User signed in successfully",
+        data: {
+          newUser,
+        },
+      });
     });
   } catch (error) {
-    next(error)
+    next(error);
   }
 };
-
-
 export const signOut = (req, res, next) => {
   if (!req.session) {
     return res.status(401).json({
@@ -89,16 +109,16 @@ export const signOut = (req, res, next) => {
       return next(error);
     }
 
-res.clearCookie("kolocart.sid", {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  path: "/",
-});
+    res.clearCookie("kolocart.sid", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+    });
 
-return res.status(200).json({
-  success: true,
-  message: "Signed out successfully.",
-});
+    return res.status(200).json({
+      success: true,
+      message: "Signed out successfully.",
+    });
   });
 };
