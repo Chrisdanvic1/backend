@@ -23,7 +23,6 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: null,
       maxLength: 15,
-      unique: true,
     },
 
     phoneVerified: {
