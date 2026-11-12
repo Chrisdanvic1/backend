@@ -17,7 +17,7 @@ app.use(
 );
 
 app.use(express.json());
-
+app.set("trust proxy", 1);
 app.use(
   session({
     name: "kolocart.sid",
