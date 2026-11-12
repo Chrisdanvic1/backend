@@ -57,7 +57,7 @@ userSchema.index(
   {
     unique: true,
     partialFilterExpression: {
-      providerId: { $type: "string" },
+      number: { $type: "string" },
     },
   },
 );

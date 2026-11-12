@@ -5,7 +5,6 @@ import connectToDatabse from "./mongodb/mongodb.js";
 const PORT = common.PORT || 5500;
 
 app.listen(PORT, async () => {
-  console.log(`server working at port ${PORT}`);
-
   await connectToDatabse();
+  console.log(`server working at port ${PORT}`);
 });
